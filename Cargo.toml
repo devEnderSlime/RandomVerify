@@ -5,5 +5,5 @@ edition = "2021"
 
 [dependencies]
 plotters = "0.3.7"
-mersenne_twister = "1.1"
+mersenne_twister = "1.1.1"
 rand = "0.4.6"

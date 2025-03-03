@@ -1,18 +1,46 @@
 use mersenne_twister::MT19937;
 use plotters::prelude::*;
 use rand::{Rng, SeedableRng, thread_rng};
+use std::io::{self, Write}; // 导入输入输出模块
+use std::thread; // 导入 thread 模块
+use std::time::Duration; // 导入 Duration
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // 使用系统时间作为种子
+    // 提示用户选择模式
+    print!("请输入 '1' 使用随机种子，或者 '2' 使用固定种子（5489）: ");
+    io::stdout().flush().unwrap(); // 确保输出立即显示
+
+    let mut input = String::new(); // 创建一个可变字符串来存储用户输入
+
+    // 读取用户输入
+    io::stdin().read_line(&mut input).unwrap();
+
+    let seed_choice: i32 = input.trim().parse().unwrap_or(1); // 默认选择随机种子
+
+    // 使用系统时间作为种子或固定种子5489
     let mut rng = MT19937::new_unseeded();
-    let seed: u32 = thread_rng().gen(); // 获取一个随机种子
-    rng.reseed(seed); // 使用随机生成的种子
+
+    if seed_choice == 2 {
+        rng.reseed(5489u32); // 使用固定种子 5489
+        println!("使用固定种子 5489");
+    } else {
+        let seed: u32 = thread_rng().gen(); // 获取一个随机种子
+        rng.reseed(seed); // 使用随机生成的种子
+        println!("使用随机种子");
+    }
 
     let mut data = Vec::new();
     let mut angles = Vec::new(); // 用来存储极角
 
-    let randomizer:i128 = 100; //修改参数控制随机数生成数量
-    // 生成 一些 随机数并转换为极坐标（仅限第一象限）
+    // 提示用户输入生成随机数的数量
+    print!("请输入一个正整数来设置随机数生成数量: ");
+    io::stdout().flush().unwrap(); // 确保输出立即显示
+
+    let mut input = String::new(); // 创建一个可变字符串来存储用户输入
+    io::stdin().read_line(&mut input).unwrap();
+    let randomizer: i128 = input.trim().parse().unwrap_or(100); // 默认值为 100
+
+    // 生成指定数量的随机数并转换为极坐标（仅限第一象限）
     for i in 0..randomizer {
         let random_number = rng.gen::<u32>() % (randomizer as u32 + 1); // 将 randomizer 转换为 u32 并生成随机数
 
@@ -21,7 +49,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let y = random_number as f64;
 
         // 计算极坐标，r不需要
-        //let r = (x.powi(2) + y.powi(2)).sqrt(); // 极坐标的半径 r
         let theta = y.atan2(x); // 极角 theta
 
         // 仅处理第一象限的角度
@@ -71,17 +98,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .label("Average Angle")
         .legend(|(x, y)| PathElement::new(vec![(x, y)], &RED));
 
-    // 配置坐标轴
-    chart
-        .configure_mesh()
-        .x_desc("X Axis")
-        .y_desc("Y Axis")
-        .draw()?; // 确保坐标轴可以显示
+    // 计算并显示坐标轴
+    chart.configure_mesh().draw()?; // 使用 configure_mesh() 方法绘制坐标轴
 
     // 保存图片
     root.present()?;
     println!("散点图和平均角度图已保存为 scatter_first_quadrant_plot_with_axes.png");
 
+    // 暂停 10 秒钟
+    println!("程序将在 10 秒后结束...");
+    thread::sleep(Duration::new(10, 0)); // 暂停 10 秒
+
     Ok(())
 }
-
