@@ -64,32 +64,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 打印平均角度（以度数表示）
     println!("Average Angle: {} degrees", avg_angle.to_degrees());
 
-    // 创建绘图区域
-    let root = BitMapBackend::new("scatter_first_quadrant_plot_with_axes.png", (640, 480)).into_drawing_area();
+    // 创建绘图区域，并增加分辨率
+    let root = BitMapBackend::new("scatter_first_quadrant_plot_with_axes.png", (3840, 2160))
+        .into_drawing_area(); // 设置更大的分辨率
     root.fill(&WHITE)?;
 
-    // 创建图表
+    // 创建图表并调整字体大小
     let mut chart = ChartBuilder::on(&root)
-        .caption("Mersenne Twister Random Scatter in First Quadrant", ("Arial", 20))
+        .caption("Mersenne Twister Random Scatter in First Quadrant", ("Arial", 50)) // 增加标题字体大小
         .build_cartesian_2d(0f64..100f64, 0f64..100f64)?;
 
-    // 绘制散点图
+    // 绘制散点图并增加点的大小
     chart
         .draw_series(PointSeries::of_element(
             data.iter().cloned(),
-            5,
+            20, // 增加点的大小
             &BLUE,
             &|c, s, st| Circle::new(c, s, st.filled()),
         ))?
         .label("Random Points")
-        .legend(|(x, y)| Circle::new((x, y), 5, &BLUE));
-
-    // 计算缩放后的平均角度线条的终点
-    let scale = 50.0; // 控制线条的长度
-    let avg_angle_x = avg_angle.cos() * scale; // 使用缩放后的长度
-    let avg_angle_y = avg_angle.sin() * scale;
+        .legend(|(x, y)| Circle::new((x, y), 20, &BLUE)); // 增加点的大小
 
     // 绘制平均角度的线（从原点 (0.0, 0.0) 开始）
+    let scale = 50.0;
+    let avg_angle_x = avg_angle.cos() * scale;
+    let avg_angle_y = avg_angle.sin() * scale;
+
     chart
         .draw_series(LineSeries::new(
             vec![(0.0, 0.0), (avg_angle_x, avg_angle_y)], // 从原点 (0.0, 0.0) 开始
@@ -99,7 +99,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .legend(|(x, y)| PathElement::new(vec![(x, y)], &RED));
 
     // 计算并显示坐标轴
-    chart.configure_mesh().draw()?; // 使用 configure_mesh() 方法绘制坐标轴
+    chart.configure_mesh().x_labels(30).y_labels(30).draw()?; // 增加网格的标签数量
 
     // 保存图片
     root.present()?;
