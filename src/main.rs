@@ -1,113 +1,134 @@
-use mersenne_twister::MT19937;
+use rand::{Rng, SeedableRng};
+use rand::rngs::StdRng;
+use rand_distr::{Zipf, Pareto, Distribution};
 use plotters::prelude::*;
-use rand::{Rng, SeedableRng, thread_rng};
-use std::io::{self, Write}; // 导入输入输出模块
-use std::thread; // 导入 thread 模块
-use std::time::Duration; // 导入 Duration
+use plotters::style::{ShapeStyle, Color};  // 导入 ShapeStyle 和 Color
+use std::io::{self, Write};
+use std::thread;
+use std::time::Duration;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // 提示用户选择模式
+    // 用户选择随机数生成方式
+    print!("请输入 '1' 选择梅森旋转算法（MT19937），或者 '2' 选择非均匀分布: ");
+    io::stdout().flush().unwrap();
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).unwrap();
+    let rng_choice: i32 = input.trim().parse().unwrap_or(1);
+
+    // 用户选择种子类型
     print!("请输入 '1' 使用随机种子，或者 '2' 使用固定种子（5489）: ");
-    io::stdout().flush().unwrap(); // 确保输出立即显示
-
-    let mut input = String::new(); // 创建一个可变字符串来存储用户输入
-
-    // 读取用户输入
+    io::stdout().flush().unwrap();
+    input.clear();
     io::stdin().read_line(&mut input).unwrap();
+    let seed_choice: i32 = input.trim().parse().unwrap_or(1);
 
-    let seed_choice: i32 = input.trim().parse().unwrap_or(1); // 默认选择随机种子
-
-    // 使用系统时间作为种子或固定种子5489
-    let mut rng = MT19937::new_unseeded();
-
-    if seed_choice == 2 {
-        rng.reseed(5489u32); // 使用固定种子 5489
-        println!("使用固定种子 5489");
+    // 初始化随机数生成器
+    let mut rng_mt = if seed_choice == 2 {
+        StdRng::seed_from_u64(5489)
     } else {
-        let seed: u32 = thread_rng().gen(); // 获取一个随机种子
-        rng.reseed(seed); // 使用随机生成的种子
-        println!("使用随机种子");
-    }
+        StdRng::from_entropy()
+    };
 
-    let mut data = Vec::new();
-    let mut angles = Vec::new(); // 用来存储极角
+    let mut rng_non_uniform = if seed_choice == 2 {
+        StdRng::seed_from_u64(5489)
+    } else {
+        StdRng::from_entropy()
+    };
 
-    // 提示用户输入生成随机数的数量
-    print!("请输入一个正整数来设置随机数生成数量: ");
-    io::stdout().flush().unwrap(); // 确保输出立即显示
+    // 定义Zipf分布和Pareto分布
+    let zipf = Zipf::new(10000, 1.1)?;
+    let pareto = Pareto::new(1.0, 3.0)?;
 
-    let mut input = String::new(); // 创建一个可变字符串来存储用户输入
+    // 用户输入随机数生成数量
+    print!("请输入随机数生成数量: ");
+    io::stdout().flush().unwrap();
+    input.clear();
     io::stdin().read_line(&mut input).unwrap();
-    let randomizer: i128 = input.trim().parse().unwrap_or(100); // 默认值为 100
+    let randomizer: usize = input.trim().parse().unwrap_or(1000);
 
-    // 生成指定数量的随机数并转换为极坐标（仅限第一象限）
-    for i in 0..randomizer {
-        let random_number = rng.gen::<u32>() % (randomizer as u32 + 1); // 将 randomizer 转换为 u32 并生成随机数
+    // 存储生成的随机数据和角度数据
+    let mut data = Vec::new();
+    let mut angles = Vec::new();
 
-        // 只考虑第一象限的点 (x >= 0, y >= 0)
-        let x = i as f64;
-        let y = random_number as f64;
+    let x_min = 1.0;
+    let x_max = randomizer as f64;
 
-        // 计算极坐标，r不需要
-        let theta = y.atan2(x); // 极角 theta
+    // 生成随机数并计算角度
+    for _ in 0..randomizer {
+        let rnd_x = if rng_choice == 1 {
+            rng_mt.gen_range(x_min..x_max)
+        } else {
+            zipf.sample(&mut rng_non_uniform) as f64
+        };
 
-        // 仅处理第一象限的角度
-        if theta >= 0.0 && theta <= std::f64::consts::PI / 2.0 {
-            data.push((x, y));  // 存储笛卡尔坐标
-            angles.push(theta); // 存储极角
-        }
+        let rnd_y = if rng_choice == 1 {
+            rng_mt.gen_range(x_min..x_max)
+        } else {
+            pareto.sample(&mut rng_non_uniform)
+        };
+
+        let theta = rnd_y.atan2(rnd_x);
+        data.push((rnd_x, rnd_y));
+        angles.push(theta);
     }
 
-    // 计算平均极角
+    // 计算平均角度
     let avg_angle = angles.iter().sum::<f64>() / angles.len() as f64;
+    println!("Average Angle: {:.5} degrees", avg_angle.to_degrees());
 
-    // 打印平均角度（以度数表示）
-    println!("Average Angle: {} degrees", avg_angle.to_degrees());
+    // 动态计算坐标轴范围
+    let x_min_dynamic = data.iter().map(|(x, _)| *x).fold(f64::INFINITY, f64::min);
+    let x_max_dynamic = data.iter().map(|(x, _)| *x).fold(f64::NEG_INFINITY, f64::max);
+    let y_min_dynamic = data.iter().map(|(_, y)| *y).fold(f64::INFINITY, f64::min);
+    let y_max_dynamic = data.iter().map(|(_, y)| *y).fold(f64::NEG_INFINITY, f64::max);
 
-    // 创建绘图区域，并增加分辨率
-    let root = BitMapBackend::new("scatter_first_quadrant_plot_with_axes.png", (3840, 2160))
-        .into_drawing_area(); // 设置更大的分辨率
+    // 设置坐标轴范围为数据点的范围
+    let x_range = (x_min_dynamic - 0.05)..(x_max_dynamic + 0.05);
+    let y_range = (y_min_dynamic - 0.05)..(y_max_dynamic + 0.05);
+
+    // 创建并设置绘图区域
+    let root = BitMapBackend::new("scatter_non_uniform.png", (3840, 2160)).into_drawing_area();
     root.fill(&WHITE)?;
 
-    // 创建图表并调整字体大小
+    // 创建图表
     let mut chart = ChartBuilder::on(&root)
-        .caption("Mersenne Twister Random Scatter in First Quadrant", ("Arial", 50)) // 增加标题字体大小
-        .build_cartesian_2d(0f64..100f64, 0f64..100f64)?;
+        .caption("Scatter Plot", ("Arial", 50))
+        .build_cartesian_2d(x_range, y_range)?;
 
-    // 绘制散点图并增加点的大小
-    chart
-        .draw_series(PointSeries::of_element(
-            data.iter().cloned(),
-            20, // 增加点的大小
-            &BLUE,
-            &|c, s, st| Circle::new(c, s, st.filled()),
-        ))?
+    // 绘制散点图
+    chart.draw_series(PointSeries::of_element(
+        data.iter().cloned(),
+        2,
+        &RGBAColor(0, 0, 255, 0.7), // 设置颜色为蓝色
+        &|c, s, st| Circle::new(c, s, st.filled()),
+    ))?
         .label("Random Points")
-        .legend(|(x, y)| Circle::new((x, y), 20, &BLUE)); // 增加点的大小
+        .legend(|(x, y)| Circle::new((x, y), 2, &RGBAColor(0, 0, 255, 0.7)));
 
-    // 绘制平均角度的线（从原点 (0.0, 0.0) 开始）
+    // 绘制平均角度线
     let scale = 50.0;
-    let avg_angle_x = avg_angle.cos() * scale;
-    let avg_angle_y = avg_angle.sin() * scale;
+    let avg_angle_x = x_min_dynamic + avg_angle.cos() * scale;
+    let avg_angle_y = y_min_dynamic + avg_angle.sin() * scale;
+    chart.draw_series(LineSeries::new(
+        vec![(x_min_dynamic, y_min_dynamic), (avg_angle_x, avg_angle_y)], // 连接坐标点
+        ShapeStyle {  // 创建 ShapeStyle 对象
+            color: RGBAColor(255, 0, 0, 0.8),  // 设置线条颜色（红色，透明度0.8）
+            filled: true,  // 填充线条区域
+            stroke_width: 5,  // 设置线条宽度
+        },
+    ))?
+        .label("Average Angle")  // 设置图例标签
+        .legend(|(x, y)| PathElement::new(vec![(x, y)], &RGBAColor(255, 0, 0, 0.8)));  // 设置图例
 
-    chart
-        .draw_series(LineSeries::new(
-            vec![(0.0, 0.0), (avg_angle_x, avg_angle_y)], // 从原点 (0.0, 0.0) 开始
-            &RED,
-        ))?
-        .label("Average Angle")
-        .legend(|(x, y)| PathElement::new(vec![(x, y)], &RED));
-
-    // 计算并显示坐标轴
-    chart.configure_mesh().x_labels(30).y_labels(30).draw()?; // 增加网格的标签数量
-
-    // 保存图片
+    // 配置图表网格
+    chart.configure_mesh().x_labels(30).y_labels(30).draw()?;
     root.present()?;
-    println!("散点图和平均角度图已保存为 scatter_first_quadrant_plot_with_axes.png");
 
-    // 暂停 10 秒钟
+    // 输出文件保存提示
+    println!("散点图已保存为 scatter_non_uniform.png");
+
+    // 程序结束延迟
     println!("程序将在 10 秒后结束...");
-    thread::sleep(Duration::new(10, 0)); // 暂停 10 秒
-
+    thread::sleep(Duration::new(10, 0));
     Ok(())
 }

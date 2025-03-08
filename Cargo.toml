@@ -6,4 +6,5 @@ edition = "2021"
 [dependencies]
 plotters = "0.3.7"
 mersenne_twister = "1.1.1"
-rand = "0.4.6"
+rand = "0.8.5"  # 使用 rand 0.8.x
+rand_distr = "0.4"  # 添加 rand_distr 作为新的依赖
