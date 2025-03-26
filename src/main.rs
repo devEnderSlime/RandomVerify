@@ -2,58 +2,76 @@ use rand::{Rng, SeedableRng};
 use rand::rngs::StdRng;
 use rand_distr::{Zipf, Pareto, Distribution};
 use plotters::prelude::*;
-use plotters::style::{ShapeStyle, Color};  // 导入 ShapeStyle 和 Color
+use plotters::style::{ShapeStyle, Color};
 use std::io::{self, Write};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
+use std::cmp::Ordering;
+
+/// Manually computes the KS statistic for a sorted sample assuming a Uniform(0,1) theoretical CDF.
+fn ks_test_uniform(sorted_sample: &[f64]) -> f64 {
+    let n = sorted_sample.len() as f64;
+    let mut d:f64 = 0.0;
+    for (i, &x) in sorted_sample.iter().enumerate() {
+        let empirical_cdf = (i as f64 + 1.0) / n;
+        let lower_bound = i as f64 / n;
+        let diff_upper = (empirical_cdf - x).abs();
+        let diff_lower = (x - lower_bound).abs();
+        d = d.max(diff_upper).max(diff_lower);
+    }
+    d
+}
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // 用户选择随机数生成方式
-    print!("请输入 '1' 选择梅森旋转算法（MT19937），或者 '2' 选择非均匀分布: ");
-    io::stdout().flush().unwrap();
+    let start_time = Instant::now();
+
+    // User selects the random number generation method.
+    print!("Enter '1' to choose Mersenne Twister (MT19937), or '2' for non-uniform distribution: ");
+    io::stdout().flush()?;
     let mut input = String::new();
-    io::stdin().read_line(&mut input).unwrap();
+    io::stdin().read_line(&mut input)?;
     let rng_choice: i32 = input.trim().parse().unwrap_or(1);
 
-    // 用户选择种子类型
-    print!("请输入 '1' 使用随机种子，或者 '2' 使用固定种子（5489）: ");
-    io::stdout().flush().unwrap();
+    // User selects seed type.
+    print!("Enter '1' for random seed, or '2' for fixed seed (5489): ");
+    io::stdout().flush()?;
     input.clear();
-    io::stdin().read_line(&mut input).unwrap();
+    io::stdin().read_line(&mut input)?;
     let seed_choice: i32 = input.trim().parse().unwrap_or(1);
 
-    // 初始化随机数生成器
+    // Initialize random number generators.
     let mut rng_mt = if seed_choice == 2 {
         StdRng::seed_from_u64(5489)
     } else {
         StdRng::from_entropy()
     };
-
     let mut rng_non_uniform = if seed_choice == 2 {
         StdRng::seed_from_u64(5489)
     } else {
         StdRng::from_entropy()
     };
 
-    // 定义Zipf分布和Pareto分布
+    // Define Zipf and Pareto distributions.
     let zipf = Zipf::new(10000, 1.1)?;
     let pareto = Pareto::new(1.0, 3.0)?;
 
-    // 用户输入随机数生成数量
-    print!("请输入随机数生成数量: ");
-    io::stdout().flush().unwrap();
+    // User inputs the number of random numbers to generate.
+    print!("Enter the number of random numbers to generate: ");
+    io::stdout().flush()?;
     input.clear();
-    io::stdin().read_line(&mut input).unwrap();
+    io::stdin().read_line(&mut input)?;
     let randomizer: usize = input.trim().parse().unwrap_or(1000);
 
-    // 存储生成的随机数据和角度数据
-    let mut data = Vec::new();
-    let mut angles = Vec::new();
-
+    // Prepare containers.
+    let mut data = Vec::with_capacity(randomizer);
+    let mut random_numbers = Vec::with_capacity(randomizer);
+    let mut sum_angles = 0.0;  // Accumulate angles on the fly.
     let x_min = 1.0;
     let x_max = randomizer as f64;
 
-    // 生成随机数并计算角度
+    let gen_start = Instant::now();
+
+    // Generate random numbers and compute angles, accumulating sum_angles.
     for _ in 0..randomizer {
         let rnd_x = if rng_choice == 1 {
             rng_mt.gen_range(x_min..x_max)
@@ -69,66 +87,72 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let theta = rnd_y.atan2(rnd_x);
         data.push((rnd_x, rnd_y));
-        angles.push(theta);
+        random_numbers.push(rnd_x);
+        sum_angles += theta;
     }
 
-    // 计算平均角度
-    let avg_angle = angles.iter().sum::<f64>() / angles.len() as f64;
+    let gen_duration = gen_start.elapsed();
+    println!("Random number generation time: {:?}", gen_duration);
+
+    // Time the angle accumulation and average calculation.
+    let angle_start = Instant::now();
+    let avg_angle = sum_angles / randomizer as f64;
+    let angle_duration = angle_start.elapsed();
+    println!("Angle accumulation and average calculation time: {:?}", angle_duration);
     println!("Average Angle: {:.5} degrees", avg_angle.to_degrees());
 
-    // 动态计算坐标轴范围
+    // Perform manual KS test.
+    let ks_start = Instant::now();
+    // Normalize random_numbers to [0,1] by dividing by x_max.
+    let mut normalized: Vec<f64> = random_numbers.iter().map(|&x| x / x_max).collect();
+    // Sort normalized vector (O(n log n)).
+    normalized.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
+    let ks_statistic = ks_test_uniform(&normalized);
+    let ks_duration = ks_start.elapsed();
+    println!("Manual KS Test Statistic: {:.5}", ks_statistic);
+    println!("Manual KS Test computation time: {:?}", ks_duration);
+
+    // Dynamically calculate the axis range for the scatter plot.
     let x_min_dynamic = data.iter().map(|(x, _)| *x).fold(f64::INFINITY, f64::min);
     let x_max_dynamic = data.iter().map(|(x, _)| *x).fold(f64::NEG_INFINITY, f64::max);
     let y_min_dynamic = data.iter().map(|(_, y)| *y).fold(f64::INFINITY, f64::min);
     let y_max_dynamic = data.iter().map(|(_, y)| *y).fold(f64::NEG_INFINITY, f64::max);
 
-    // 设置坐标轴范围为数据点的范围
     let x_range = (x_min_dynamic - 0.05)..(x_max_dynamic + 0.05);
     let y_range = (y_min_dynamic - 0.05)..(y_max_dynamic + 0.05);
 
-    // 创建并设置绘图区域
-    let root = BitMapBackend::new("scatter_non_uniform.png", (3840, 2160)).into_drawing_area();
+    // Create and set up the drawing area for the scatter plot.
+    let root = SVGBackend::new("scatter_non_uniform.svg", (640, 480)).into_drawing_area();  // Change to SVG format
     root.fill(&WHITE)?;
 
-    // 创建图表
     let mut chart = ChartBuilder::on(&root)
         .caption("Scatter Plot", ("Arial", 50))
         .build_cartesian_2d(x_range, y_range)?;
 
-    // 绘制散点图
-    chart.draw_series(PointSeries::of_element(
-        data.iter().cloned(),
-        2,
-        &RGBAColor(0, 0, 255, 0.7), // 设置颜色为蓝色
-        &|c, s, st| Circle::new(c, s, st.filled()),
-    ))?
+    // Draw scatter plot.
+    chart.draw_series(
+        data.iter().cloned().map(|(x, y)| Circle::new((x, y), 2, &BLUE.mix(0.7)))
+    )?
         .label("Random Points")
-        .legend(|(x, y)| Circle::new((x, y), 2, &RGBAColor(0, 0, 255, 0.7)));
+        .legend(|(x, y)| Circle::new((x, y), 2, &BLUE.mix(0.7)));
 
-    // 绘制平均角度线
+    // Draw average angle line.
     let scale = 50.0;
     let avg_angle_x = x_min_dynamic + avg_angle.cos() * scale;
     let avg_angle_y = y_min_dynamic + avg_angle.sin() * scale;
     chart.draw_series(LineSeries::new(
-        vec![(x_min_dynamic, y_min_dynamic), (avg_angle_x, avg_angle_y)], // 连接坐标点
-        ShapeStyle {  // 创建 ShapeStyle 对象
-            color: RGBAColor(255, 0, 0, 0.8),  // 设置线条颜色（红色，透明度0.8）
-            filled: true,  // 填充线条区域
-            stroke_width: 5,  // 设置线条宽度
-        },
+        vec![(x_min_dynamic, y_min_dynamic), (avg_angle_x, avg_angle_y)],
+        ShapeStyle { color: RED.mix(0.8), filled: true, stroke_width: 5 },
     ))?
-        .label("Average Angle")  // 设置图例标签
-        .legend(|(x, y)| PathElement::new(vec![(x, y)], &RGBAColor(255, 0, 0, 0.8)));  // 设置图例
+        .label("Average Angle")
+        .legend(|(x, y)| PathElement::new(vec![(x, y)], &RED.mix(0.8)));
 
-    // 配置图表网格
     chart.configure_mesh().x_labels(30).y_labels(30).draw()?;
     root.present()?;
+    println!("Scatter plot generated successfully!");
 
-    // 输出文件保存提示
-    println!("散点图已保存为 scatter_non_uniform.png");
-
-    // 程序结束延迟
-    println!("程序将在 10 秒后结束...");
-    thread::sleep(Duration::new(10, 0));
+    println!("Total execution time: {:?}", start_time.elapsed());
+    println!("The program will exit shortly...");
+    thread::sleep(Duration::from_secs(10));
     Ok(())
 }

@@ -8,3 +8,5 @@ plotters = "0.3.7"
 mersenne_twister = "1.1.1"
 rand = "0.8.5"  # 使用 rand 0.8.x
 rand_distr = "0.4"  # 添加 rand_distr 作为新的依赖
+statrs = "0.18.0"
+kolmogorov_smirnov = "1.1.0"
